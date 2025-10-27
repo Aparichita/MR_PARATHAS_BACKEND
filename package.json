@@ -1,0 +1,16 @@
+{
+  "name": "mr_parathas_backend",
+  "version": "1.0.0",
+  "description": "Restaurant website",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node index/js"
+  },
+  "author": "Aparichita",
+  "license": "ISC",
+  "devDependencies": {
+    "nodemon": "^3.1.10",
+    "prettier": "^3.6.2"
+  }
+}
