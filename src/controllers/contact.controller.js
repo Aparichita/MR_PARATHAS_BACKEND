@@ -1,0 +1,114 @@
+import { Contact } from "../models/contact.model.js";
+import { ApiError } from "../utils/api-error.js";
+import { ApiResponse } from "../utils/api-response.js";
+import { asyncHandler } from "../utils/async-handler.js";
+import logger from "../utils/logger.js";
+
+/* ---------------------------------------------------
+   📨 Submit a contact form (Public route)
+--------------------------------------------------- */
+export const submitContactForm = asyncHandler(async (req, res) => {
+  const { name, email, subject, message } = req.body;
+
+  if (!name || !email || !subject || !message) {
+    throw new ApiError(
+      400,
+      "All fields (name, email, subject, message) are required",
+    );
+  }
+
+  const newContact = await Contact.create({ name, email, subject, message });
+
+  // Auto-acknowledgment email
+  await sendEmail({
+    email,
+    subject: "Thank you for contacting Mr. Parathas!",
+    mailGenContent: {
+      body: {
+        name,
+        intro: `We’ve received your message regarding: "${subject}".`,
+        outro: "Our team will reach out to you soon. 😊",
+      },
+    },
+  });
+
+  return res
+    .status(201)
+    .json(new ApiResponse(201, newContact, "Message submitted successfully"));
+});
+
+/* ---------------------------------------------------
+   📋 Get all contact messages (Admin only)
+--------------------------------------------------- */
+export const getAllContacts = asyncHandler(async (req, res) => {
+  const contacts = await Contact.find().sort({ createdAt: -1 });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, contacts, "Fetched all contact messages"));
+});
+
+/* ---------------------------------------------------
+   🔍 Get a single contact message by ID (Admin only)
+--------------------------------------------------- */
+export const getContactById = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const contact = await Contact.findById(id);
+  if (!contact) throw new ApiError(404, "Contact message not found");
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(200, contact, "Fetched contact message successfully"),
+    );
+});
+
+/* ---------------------------------------------------
+   💬 Reply to a contact message (Admin only)
+--------------------------------------------------- */
+export const replyToContact = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { replyMessage } = req.body;
+
+  if (!replyMessage) throw new ApiError(400, "Reply message is required");
+
+  const contact = await Contact.findById(id);
+  if (!contact) throw new ApiError(404, "Contact message not found");
+
+  // Send reply email
+  await sendEmail({
+    email: contact.email,
+    subject: `Re: ${contact.subject}`,
+    mailGenContent: {
+      body: {
+        name: contact.name,
+        intro: replyMessage,
+        outro: "Thank you for reaching out to Mr. Parathas!",
+      },
+    },
+  });
+
+  contact.isReplied = true;
+  contact.replyMessage = replyMessage;
+  contact.repliedAt = new Date();
+  await contact.save({ validateBeforeSave: false });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, contact, "Reply sent successfully"));
+});
+
+/* ---------------------------------------------------
+   ❌ Delete a contact message (Admin only)
+--------------------------------------------------- */
+export const deleteContact = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const deleted = await Contact.findByIdAndDelete(id);
+  if (!deleted) throw new ApiError(404, "Contact message not found");
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Contact message deleted successfully"));
+});
