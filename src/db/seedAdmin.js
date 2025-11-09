@@ -1,35 +1,37 @@
-// src/db/seedAdmin.js
 import mongoose from "mongoose";
 import dotenv from "dotenv";
-import bcrypt from "bcryptjs";
 import { User } from "../models/user.model.js";
 
 dotenv.config();
 
 const seedAdmin = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI, {
+    // Connect to MongoDB with a specific database
+    await mongoose.connect(process.env.MONGO_URI, {
+      dbName: "MR_PARATHAS", // Must match your desired DB
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
 
-    const adminEmail = process.env.ADMIN_EMAIL || "admin@mrparathas.com";
-    const adminUsername = process.env.ADMIN_USERNAME || "admin";
-    const adminPassword = process.env.ADMIN_PASSWORD || "Admin@123";
+    console.log("✅ Connected to MongoDB");
 
+    const adminEmail = process.env.ADMIN_EMAIL || "admin2@mrparathas.com";
+    const adminUsername = process.env.ADMIN_USERNAME || "admin2";
+    const adminPassword = process.env.ADMIN_PASSWORD || "Admin@1234";
+
+    // Check if admin already exists
     const existingAdmin = await User.findOne({ email: adminEmail });
-
     if (existingAdmin) {
       console.log("⚠️ Admin user already exists. No changes made.");
       process.exit(0);
     }
 
-    const hashedPassword = await bcrypt.hash(adminPassword, 10);
-
+    // Create the admin user WITHOUT pre-hashing the password
+    // The password will be hashed automatically by the pre-save hook in the User model
     const admin = await User.create({
       username: adminUsername,
       email: adminEmail,
-      password: hashedPassword,
+      password: adminPassword, // <-- plain password
       role: "admin",
       isEmailVerified: true,
     });

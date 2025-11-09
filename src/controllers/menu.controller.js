@@ -1,6 +1,8 @@
 import { Menu } from "../models/menu.model.js";
+import { ApiError } from "../utils/api-error.js";
+import { ApiResponse } from "../utils/api-response.js";
+import { asyncHandler } from "../utils/async-handler.js";
 
-import logger from "../utils/logger.js";
 /* ---------------------------------------------------
    🍽️ Create a new Menu Item (Admin only)
 --------------------------------------------------- */
@@ -158,3 +160,66 @@ export const deleteMenuItem = async (req, res) => {
     });
   }
 };
+
+/* ---------------------------------------------------
+   ⭐ Rate Menu Item (User)
+--------------------------------------------------- */
+/* POST /menu/:id/rate
+   Auth required (req.user._id should be available)
+*/
+export const rateMenuItem = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { rating, comment } = req.body;
+  const userId = req.user?._id;
+  if (!userId) throw new ApiError(401, "Authentication required");
+
+  const menu = await Menu.findById(id);
+  if (!menu) throw new ApiError(404, "Menu item not found");
+
+  // Prevent duplicate rating by same user — you can allow updates instead
+  const existingIdx = menu.ratings.findIndex((r) => String(r.user) === String(userId));
+  if (existingIdx !== -1) {
+    // update existing rating
+    menu.ratings[existingIdx].rating = rating;
+    menu.ratings[existingIdx].comment = comment || menu.ratings[existingIdx].comment;
+    menu.ratings[existingIdx].createdAt = new Date();
+  } else {
+    menu.ratings.push({ user: userId, rating, comment });
+  }
+
+  await menu.save();
+
+  // return updated ratings and average
+  const payload = {
+    averageRating: menu.averageRating,
+    totalRatings: menu.ratings.length,
+    ratings: menu.ratings.slice().reverse(), // newest first
+  };
+
+  return res.status(201).json(new ApiResponse(201, payload, "Rating saved"));
+});
+
+/* GET /menu/:id/ratings
+   Public
+*/
+export const getMenuRatings = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const menu = await Menu.findById(id).populate("ratings.user", "username email");
+  if (!menu) throw new ApiError(404, "Menu item not found");
+
+  const payload = {
+    averageRating: menu.averageRating,
+    totalRatings: menu.ratings.length,
+    ratings: menu.ratings
+      .map((r) => ({
+        id: r._id,
+        user: r.user ? { id: r.user._id, username: r.user.username, email: r.user.email } : null,
+        rating: r.rating,
+        comment: r.comment,
+        createdAt: r.createdAt,
+      }))
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+  };
+
+  return res.status(200).json(new ApiResponse(200, payload, "Ratings fetched"));
+});

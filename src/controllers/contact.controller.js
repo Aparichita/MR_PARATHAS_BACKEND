@@ -1,4 +1,4 @@
-import { Contact } from "../models/contact.model.js";
+import Contact from "../models/contact.model.js"; // default import (fixed)
 import { ApiError } from "../utils/api-error.js";
 import { ApiResponse } from "../utils/api-response.js";
 import { asyncHandler } from "../utils/async-handler.js";
@@ -19,18 +19,8 @@ export const submitContactForm = asyncHandler(async (req, res) => {
 
   const newContact = await Contact.create({ name, email, subject, message });
 
-  // Auto-acknowledgment email
-  await sendEmail({
-    email,
-    subject: "Thank you for contacting Mr. Parathas!",
-    mailGenContent: {
-      body: {
-        name,
-        intro: `We’ve received your message regarding: "${subject}".`,
-        outro: "Our team will reach out to you soon. 😊",
-      },
-    },
-  });
+  // Optional: send ack email (sendEmail not configured -> kept intentionally commented)
+  // await sendEmail({...});
 
   return res
     .status(201)
@@ -40,7 +30,7 @@ export const submitContactForm = asyncHandler(async (req, res) => {
 /* ---------------------------------------------------
    📋 Get all contact messages (Admin only)
 --------------------------------------------------- */
-export const getAllContacts = asyncHandler(async (req, res) => {
+export const getAllMessages = asyncHandler(async (req, res) => {
   const contacts = await Contact.find().sort({ createdAt: -1 });
 
   return res
@@ -51,7 +41,7 @@ export const getAllContacts = asyncHandler(async (req, res) => {
 /* ---------------------------------------------------
    🔍 Get a single contact message by ID (Admin only)
 --------------------------------------------------- */
-export const getContactById = asyncHandler(async (req, res) => {
+export const getSingleMessage = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   const contact = await Contact.findById(id);
@@ -76,18 +66,8 @@ export const replyToContact = asyncHandler(async (req, res) => {
   const contact = await Contact.findById(id);
   if (!contact) throw new ApiError(404, "Contact message not found");
 
-  // Send reply email
-  await sendEmail({
-    email: contact.email,
-    subject: `Re: ${contact.subject}`,
-    mailGenContent: {
-      body: {
-        name: contact.name,
-        intro: replyMessage,
-        outro: "Thank you for reaching out to Mr. Parathas!",
-      },
-    },
-  });
+  // Optional: send reply email if sendEmail is configured
+  // await sendEmail({ ... });
 
   contact.isReplied = true;
   contact.replyMessage = replyMessage;
@@ -102,7 +82,7 @@ export const replyToContact = asyncHandler(async (req, res) => {
 /* ---------------------------------------------------
    ❌ Delete a contact message (Admin only)
 --------------------------------------------------- */
-export const deleteContact = asyncHandler(async (req, res) => {
+export const deleteMessage = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   const deleted = await Contact.findByIdAndDelete(id);

@@ -8,7 +8,7 @@ import {
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import { validate } from "../middlewares/validator.middleware.js";
 import { contactFormValidator } from "../validators/index.js";
-import { checkAdminRole } from "../middlewares/role.middleware.js";
+import { authorizeRoles } from "../middlewares/role.middleware.js"; // use authorizeRoles
 
 const router = Router();
 
@@ -18,8 +18,8 @@ router.post("/", contactFormValidator(), validate, submitContactForm);
 
 /* ---------- Protected Admin Routes ---------- */
 // Only admin should be able to see messages
-router.get("/", verifyJWT, checkAdminRole, getAllMessages);
-router.get("/:id", verifyJWT, checkAdminRole, getSingleMessage);
-router.delete("/:id", verifyJWT, checkAdminRole, deleteMessage);
+router.get("/", verifyJWT, authorizeRoles("admin"), getAllMessages);
+router.get("/:id", verifyJWT, authorizeRoles("admin"), getSingleMessage);
+router.delete("/:id", verifyJWT, authorizeRoles("admin"), deleteMessage);
 
 export default router;

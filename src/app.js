@@ -9,6 +9,7 @@ import authRouter from "./routes/auth.routes.js";
 import menuRouter from "./routes/menu.routes.js";
 import orderRouter from "./routes/order.routes.js";
 import contactRouter from "./routes/contact.routes.js";
+import adminRoutes from "./routes/admin.routes.js";
 
 // Load environment variables
 dotenv.config();
@@ -37,6 +38,8 @@ app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/menu", menuRouter);
 app.use("/api/v1/orders", orderRouter);
 app.use("/api/v1/contact", contactRouter);
+// mount admin routes under /api/v1/admin
+app.use("/api/v1/admin", adminRoutes);
 
 /* -------------------- Root Route -------------------- */
 app.get("/", (req, res) => {

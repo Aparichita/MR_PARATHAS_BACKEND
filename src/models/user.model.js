@@ -87,13 +87,13 @@ userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
 
   // Enforce strong password
-  const passwordRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,}$/;
-  if (!passwordRegex.test(this.password)) {
-    const err = new Error(
-      "Password must be at least 8 characters long and include one number and one symbol",
-    );
-    return next(err);
-  }
+  // const passwordRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,}$/;
+  // if (!passwordRegex.test(this.password)) {
+  //   const err = new Error(
+  //     "Password must be at least 8 characters long and include one number and one symbol",
+  //   );
+  //   return next(err);
+  // }
 
   this.password = await bcrypt.hash(this.password, 10);
   next();

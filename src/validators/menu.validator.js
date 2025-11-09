@@ -14,3 +14,17 @@ export const menuValidator = () => [
     .isLength({ max: 300 })
     .withMessage("Description can be up to 300 characters long"),
 ];
+
+export const ratingValidator = () => [
+  body("rating")
+    .notEmpty()
+    .withMessage("rating is required")
+    .isInt({ min: 1, max: 5 })
+    .withMessage("rating must be an integer between 1 and 5"),
+  body("comment")
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage("comment must be a string up to 500 chars"),
+];

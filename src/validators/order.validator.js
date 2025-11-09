@@ -17,12 +17,6 @@ export const orderValidator = () => [
     .isInt({ min: 1 })
     .withMessage("Quantity must be at least 1"),
 
-  body("totalAmount")
-    .notEmpty()
-    .withMessage("Total amount is required")
-    .isFloat({ gt: 0 })
-    .withMessage("Total amount must be a positive number"),
-
   body("paymentStatus")
     .optional()
     .isIn(["pending", "paid", "failed"])
@@ -33,4 +27,13 @@ export const orderValidator = () => [
     .trim()
     .isLength({ min: 5 })
     .withMessage("Delivery address must be at least 5 characters long"),
+];
+
+// Validator for updating order status (used by admin)
+export const orderStatusValidator = () => [
+  body("orderStatus")
+    .notEmpty()
+    .withMessage("orderStatus is required")
+    .isIn(["Pending", "Preparing", "Out for Delivery", "Delivered", "Cancelled"])
+    .withMessage("Invalid orderStatus"),
 ];
