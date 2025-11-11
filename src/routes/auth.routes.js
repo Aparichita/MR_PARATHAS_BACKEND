@@ -1,4 +1,4 @@
-// routes/auth.routes.js
+// src/routes/auth.routes.js
 import { Router } from "express";
 import {
   registerUser,
@@ -32,7 +32,7 @@ router.post(
   verifyJWT,
   userChangeCurrentPasswordValidator(),
   validate,
-  changeCurrentPassword,
+  changeCurrentPassword
 );
 
 export default router;

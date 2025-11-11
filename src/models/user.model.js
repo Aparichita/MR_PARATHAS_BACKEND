@@ -3,7 +3,7 @@ import bcrypt from "bcrypt";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 
-const userSchema = new Schema(
+const userSchema = new mongoose.Schema(
   {
     avatar: {
       type: {
@@ -16,14 +16,7 @@ const userSchema = new Schema(
       },
     },
 
-    username: {
-      type: String,
-      required: true,
-      unique: true,
-      lowercase: true,
-      trim: true,
-      index: true,
-    },
+    username: { type: String, required: true },
 
     email: {
       type: String,
@@ -43,6 +36,17 @@ const userSchema = new Schema(
       type: String,
       required: [true, "Password is required"],
     },
+
+    // New: loyalty points
+    points: { type: Number, default: 0 },
+
+    // New: store active refresh tokens for rotation/invalidation
+    refreshTokens: [
+      {
+        token: { type: String },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
 
     role: {
       type: String,

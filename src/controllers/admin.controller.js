@@ -2,6 +2,7 @@ import Order from "../models/order.model.js";
 import { Menu } from "../models/menu.model.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { ApiResponse } from "../utils/api-response.js";
+import { Audit } from "../models/audit.model.js";
 
 /**
  * GET /admin/dashboard/summary
@@ -64,4 +65,17 @@ export const getDashboardSummary = asyncHandler(async (req, res) => {
       topSellingItem: topSellingItem || "N/A",
     }, "Dashboard summary fetched"),
   );
+});
+
+export const getAuditLogs = asyncHandler(async (req, res) => {
+  const { page = 1, limit = 50, action, user } = req.query;
+  const filter = {};
+  if (action) filter.action = action;
+  if (user) filter.user = user;
+
+  const skip = (Number(page) - 1) * Number(limit);
+  const logs = await Audit.find(filter).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)).populate("user", "username email");
+  const total = await Audit.countDocuments(filter);
+
+  return res.status(200).json(new ApiResponse(200, { total, page: Number(page), limit: Number(limit), logs }, "Audit logs fetched"));
 });

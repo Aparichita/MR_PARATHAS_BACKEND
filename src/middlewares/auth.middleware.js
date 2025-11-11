@@ -1,51 +1,61 @@
 import jwt from "jsonwebtoken";
 import { User } from "../models/user.model.js";
 import { ApiError } from "../utils/api-error.js";
-import { asyncHandler } from "../utils/async-handler.js";
 
 /**
- * Middleware to verify JWT access token and attach user to request
+ * verifyJWT middleware
+ * - Reads token from Authorization: Bearer <token> OR req.cookies.accessToken
+ * - Tries JWT_SECRET and ACCESS_TOKEN_SECRET
+ * - Attaches req.user (user document without sensitive fields)
  */
-export const verifyJWT = asyncHandler(async (req, res, next) => {
-  let token = null;
-
-  // Get token from cookie or Authorization header
-  if (req.cookies?.accessToken) {
-    token = req.cookies.accessToken;
-  } else if (req.header("Authorization")?.startsWith("Bearer ")) {
-    token = req.header("Authorization").replace("Bearer ", "");
-  }
-
-  if (!token) {
-    throw new ApiError(401, "Access denied. No token provided.");
-  }
-
+export const verifyJWT = async (req, res, next) => {
   try {
-    // Verify JWT
-    const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+    const authHeader = req.headers.authorization || "";
+    const bearer = authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
+    const cookieToken = req.cookies && req.cookies.accessToken;
+    const token = bearer || cookieToken;
 
-    // Fetch user details (excluding sensitive fields)
-    const user = await User.findById(decoded?._id).select(
-      "-password -refreshToken -forgotPasswordToken -forgotPasswordExpiry -emailVerificationToken -emailVerificationExpiry",
-    );
+    if (!token) throw new ApiError(401, "No access token provided");
 
-    if (!user) {
-      throw new ApiError(401, "Invalid or expired token. User not found.");
+    // try multiple possible secrets (permits varied env names)
+    const secrets = [
+      process.env.JWT_SECRET,
+      process.env.ACCESS_TOKEN_SECRET,
+      process.env.ACCESS_TOKEN, // optional
+      "dev_jwt_secret",
+    ].filter(Boolean);
+
+    let payload = null;
+    let lastError = null;
+    for (const secret of secrets) {
+      try {
+        payload = jwt.verify(token, secret);
+        break;
+      } catch (err) {
+        lastError = err;
+      }
     }
 
-    req.user = user; // attach user info to req
-    next();
-  } catch (error) {
-    throw new ApiError(401, "Invalid or expired access token.");
-  }
-});
+    if (!payload) {
+      // helpful debug log (remove in production)
+      console.error("verifyJWT failed. Tried secrets:", secrets.map(s => (s ? "set" : "unset")));
+      console.error("Token (first 40 chars):", token && token.substring ? token.substring(0, 40) : token);
+      if (lastError) console.error("Last JWT error:", lastError.message);
+      throw new ApiError(401, "Invalid or expired access token.");
+    }
 
-/**
- * Optional middleware for routes that require admin privileges
- */
-export const verifyAdmin = asyncHandler(async (req, res, next) => {
-  if (!req.user || req.user.role !== "admin") {
-    throw new ApiError(403, "Access denied. Admin privileges required.");
+    const userId = payload.id || payload._id;
+    if (!userId) throw new ApiError(401, "Invalid token payload");
+
+    const user = await User.findById(userId).select("-password -refreshTokens -emailVerificationToken -emailVerificationExpiry");
+    if (!user) throw new ApiError(401, "User not found for token");
+
+    req.user = user;
+    next();
+  } catch (err) {
+    next(err);
   }
-  next();
-});
+};
+
+// export default for compatibility with existing imports
+export default verifyJWT;

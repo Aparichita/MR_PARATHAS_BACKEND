@@ -3,6 +3,8 @@ import { ApiError } from "../utils/api-error.js";
 import { ApiResponse } from "../utils/api-response.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import logger from "../utils/logger.js";
+import { sendEmail } from "../utils/email.js"; // added
+import { logAudit } from "../utils/audit.js";
 
 /* ---------------------------------------------------
    📨 Submit a contact form (Public route)
@@ -19,8 +21,32 @@ export const submitContactForm = asyncHandler(async (req, res) => {
 
   const newContact = await Contact.create({ name, email, subject, message });
 
-  // Optional: send ack email (sendEmail not configured -> kept intentionally commented)
-  // await sendEmail({...});
+  // Notify admin about new contact message
+  try {
+    const adminEmail = process.env.ADMIN_EMAIL;
+    if (adminEmail) {
+      await sendEmail({
+        to: adminEmail,
+        subject: `New Contact Message from ${name}`,
+        text: `New message:\nFrom: ${name} <${email}>\nSubject: ${subject}\n\n${message}`,
+        html: `<p><strong>From:</strong> ${name} &lt;${email}&gt;</p><p><strong>Subject:</strong> ${subject}</p><p>${message}</p>`,
+      });
+    } else {
+      logger.warn("ADMIN_EMAIL not configured — contact notifications disabled");
+    }
+  } catch (err) {
+    logger.error("Failed to send contact notification to admin:", err);
+  }
+
+  // Log the audit trail
+  await logAudit({
+    user: null,
+    action: "contact_submitted",
+    resource: "contact",
+    resourceId: newContact._id,
+    meta: { name, email, subject },
+    ip: req.ip,
+  });
 
   return res
     .status(201)

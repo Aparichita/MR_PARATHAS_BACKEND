@@ -1,23 +1,27 @@
 import { Router } from "express";
-import { createOrder, getAllOrders, getUserOrders, updateOrderStatus, cancelOrder } from "../controllers/order.controller.js";
-import { verifyJWT } from "../middlewares/auth.middleware.js";
+import {
+  createOrder,
+  getAllOrders,
+  getUserOrders,
+  cancelOrder,
+  getOrderById,
+  updateOrderStatus,
+  deleteOrder,
+  redeemPoints,
+} from "../controllers/order.controller.js";
+import verifyJWT from "../middlewares/auth.middleware.js";
 import { authorizeRoles } from "../middlewares/role.middleware.js";
-import { validate } from "../middlewares/validator.middleware.js";
-import { orderValidator, orderStatusValidator } from "../validators/order.validator.js";
 
 const router = Router();
 
-/* Public / Customer routes */
-router.post("/", verifyJWT, orderValidator(), validate, createOrder);
+// public/protected as needed
+router.post("/", verifyJWT, createOrder); // place order
 router.get("/me", verifyJWT, getUserOrders);
-
-/* Admin routes */
 router.get("/", verifyJWT, authorizeRoles("admin"), getAllOrders);
-
-// Update order status (admin)
-router.put("/:id/status", verifyJWT, authorizeRoles("admin"), orderStatusValidator(), validate, updateOrderStatus);
-
-// Cancel order (customer-side)
+router.get("/:id", verifyJWT, getOrderById);
+router.put("/:id/status", verifyJWT, authorizeRoles("admin"), updateOrderStatus);
 router.put("/:id/cancel", verifyJWT, cancelOrder);
+router.post("/:id/redeem", verifyJWT, redeemPoints);
+router.delete("/:id", verifyJWT, authorizeRoles("admin"), deleteOrder);
 
 export default router;

@@ -45,30 +45,34 @@ export const createMenuItem = async (req, res) => {
 /* ---------------------------------------------------
    📜 Get All Menu Items (Public)
 --------------------------------------------------- */
-export const getAllMenuItems = async (req, res) => {
-  try {
-    const { category } = req.query;
-    let filter = {};
+export const getAllMenuItems = asyncHandler(async (req, res) => {
+  const { name, category, minPrice, maxPrice, page = 1, limit = 20, sort } = req.query;
+  const filter = {};
 
-    if (category) {
-      filter.category = category;
-    }
-
-    const menuItems = await Menu.find(filter).sort({ createdAt: -1 });
-
-    res.status(200).json({
-      success: true,
-      count: menuItems.length,
-      data: menuItems,
-    });
-  } catch (error) {
-    console.error("Error fetching menu items:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error while fetching menu items",
-    });
+  if (name) filter.name = { $regex: name, $options: "i" };
+  if (category) filter.category = category;
+  if (minPrice || maxPrice) {
+    filter.price = {};
+    if (minPrice) filter.price.$gte = Number(minPrice);
+    if (maxPrice) filter.price.$lte = Number(maxPrice);
   }
-};
+
+  const skip = (Number(page) - 1) * Number(limit);
+  const q = Menu.find(filter).skip(skip).limit(Number(limit));
+  if (sort) q.sort(sort);
+  else q.sort({ createdAt: -1 });
+
+  const [items, total] = await Promise.all([q.exec(), Menu.countDocuments(filter)]);
+
+  return res.status(200).json({
+    success: true,
+    count: items.length,
+    total,
+    page: Number(page),
+    limit: Number(limit),
+    data: items,
+  });
+});
 
 /* ---------------------------------------------------
    🔍 Get Single Menu Item by ID (Public)
