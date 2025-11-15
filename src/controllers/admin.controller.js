@@ -1,81 +1,43 @@
 import Order from "../models/order.model.js";
 import { Menu } from "../models/menu.model.js";
+import { User } from "../models/user.model.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { ApiResponse } from "../utils/api-response.js";
-import { Audit } from "../models/audit.model.js";
 
-/**
- * GET /admin/dashboard/summary
- * Returns counts and top selling item
- */
-export const getDashboardSummary = asyncHandler(async (req, res) => {
+/* GET /admin/dashboard */
+export const getDashboard = asyncHandler(async (req, res) => {
   // total orders
   const totalOrders = await Order.countDocuments();
 
-  // counts by status (handle common casings)
-  const pendingOrders = await Order.countDocuments({
-    orderStatus: { $in: ["Pending", "pending"] },
-  });
-  const deliveredOrders = await Order.countDocuments({
-    orderStatus: { $in: ["Delivered", "delivered"] },
-  });
-  const cancelledOrders = await Order.countDocuments({
-    orderStatus: { $in: ["Cancelled", "cancelled"] },
-  });
-
-  // Top selling item aggregation
-  const menuCollection = Menu.collection.name; // safe collection name resolution
-  const agg = await Order.aggregate([
-    { $unwind: "$items" },
-    {
-      $group: {
-        _id: "$items.menuItem",
-        totalSold: { $sum: "$items.quantity" },
-      },
-    },
-    { $sort: { totalSold: -1 } },
-    { $limit: 1 },
-    {
-      $lookup: {
-        from: menuCollection,
-        localField: "_id",
-        foreignField: "_id",
-        as: "menu",
-      },
-    },
-    { $unwind: { path: "$menu", preserveNullAndEmptyArrays: true } },
-    {
-      $project: {
-        _id: 0,
-        menuId: "$_id",
-        name: "$menu.name",
-        totalSold: 1,
-      },
-    },
+  // orders by status
+  const orders = await Order.aggregate([
+    { $group: { _id: "$orderStatus", count: { $sum: 1 } } },
   ]);
+  const ordersByStatus = orders.reduce((acc, o) => {
+    acc[o._id] = o.count;
+    return acc;
+  }, {});
 
-  const topSellingItem = agg.length ? agg[0].name || String(agg[0].menuId) : null;
+  // top selling item (by quantity)
+  const top = await Order.aggregate([
+    { $unwind: "$items" },
+    { $group: { _id: "$items.menuItem", qty: { $sum: "$items.quantity" } } },
+    { $sort: { qty: -1 } },
+    { $limit: 1 },
+  ]);
+  let topSellingItem = null;
+  if (top.length) {
+    const menu = await Menu.findById(top[0]._id).select("name");
+    topSellingItem = { name: menu?.name || "Unknown", quantity: top[0].qty };
+  }
 
-  return res.status(200).json(
-    new ApiResponse(200, {
-      totalOrders,
-      pendingOrders,
-      deliveredOrders,
-      cancelledOrders,
-      topSellingItem: topSellingItem || "N/A",
-    }, "Dashboard summary fetched"),
-  );
-});
+  // total users
+  const totalUsers = await User.countDocuments();
 
-export const getAuditLogs = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 50, action, user } = req.query;
-  const filter = {};
-  if (action) filter.action = action;
-  if (user) filter.user = user;
-
-  const skip = (Number(page) - 1) * Number(limit);
-  const logs = await Audit.find(filter).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)).populate("user", "username email");
-  const total = await Audit.countDocuments(filter);
-
-  return res.status(200).json(new ApiResponse(200, { total, page: Number(page), limit: Number(limit), logs }, "Audit logs fetched"));
+  return res.status(200).json(new ApiResponse(200, {
+    totalOrders,
+    ordersByStatus,
+    topSellingItem,
+    totalUsers,
+  }, "Admin dashboard"));
 });

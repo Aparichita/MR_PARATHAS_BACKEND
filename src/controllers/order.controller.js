@@ -4,7 +4,6 @@ import { ApiError } from "../utils/api-error.js";
 import { ApiResponse } from "../utils/api-response.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import logger from "../utils/logger.js";
-import { sendEmail } from "../utils/email.js";
 import { logAudit } from "../utils/audit.js";
 import { User } from "../models/user.model.js";
 
@@ -12,11 +11,11 @@ import { User } from "../models/user.model.js";
    🧾 Place a New Order (Customer)
 --------------------------------------------------- */
 export const createOrder = asyncHandler(async (req, res) => {
-  const { items, deliveryAddress, paymentMethod } = req.body;
+  const { items } = req.body;
   const userId = req.user?._id;
 
-  if (!items || !Array.isArray(items) || items.length === 0 || !deliveryAddress) {
-    throw new ApiError(400, "All fields are required: items (array), deliveryAddress");
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    throw new ApiError(400, "items (array) are required");
   }
 
   const menuIds = [...new Set(items.map((it) => String(it.menuItem)))];
@@ -40,26 +39,22 @@ export const createOrder = asyncHandler(async (req, res) => {
     user: userId,
     items,
     totalAmount,
-    deliveryAddress,
-    paymentMethod: paymentMethod || "Cash on Delivery",
     orderStatus: "Pending",
   });
 
-  // Notify admin about new order
+  // Award loyalty points (simple scheme: 1 point per X currency)
   try {
-    const adminEmail = process.env.ADMIN_EMAIL;
-    if (adminEmail) {
-      await sendEmail({
-        to: adminEmail,
-        subject: `New Order Received (#${newOrder._id})`,
-        text: `A new order was placed.\nOrder ID: ${newOrder._id}\nTotal: ${newOrder.totalAmount}`,
-        html: `<p>A new order was placed.</p><p><strong>Order ID:</strong> ${newOrder._id}</p><p><strong>Total:</strong> ${newOrder.totalAmount}</p>`,
-      });
-    } else {
-      logger.warn("ADMIN_EMAIL not configured — admin not notified by email");
+    const POINTS_PER_AMOUNT = Number(process.env.POINTS_PER_AMOUNT) || 100; // default: 1 point per 100 units
+    const pointsEarned = Math.floor(totalAmount / POINTS_PER_AMOUNT);
+    if (pointsEarned > 0) {
+      const user = await User.findById(userId);
+      if (user) {
+        user.points = (user.points || 0) + pointsEarned;
+        await user.save();
+      }
     }
   } catch (err) {
-    logger.error("Failed to send new order email to admin:", err);
+    logger.error("Failed to award points:", err);
   }
 
   await logAudit({
@@ -83,7 +78,6 @@ export const getAllOrders = asyncHandler(async (req, res) => {
   const filter = {};
 
   if (status) {
-    // allow comma separated statuses
     const statuses = String(status).split(",").map((s) => s.trim());
     filter.orderStatus = { $in: statuses };
   }
@@ -99,7 +93,6 @@ export const getAllOrders = asyncHandler(async (req, res) => {
     if (to) {
       const t = new Date(to);
       if (!isNaN(t)) {
-        // include entire day
         t.setHours(23, 59, 59, 999);
         filter.createdAt.$lte = t;
       }
@@ -148,21 +141,14 @@ export const cancelOrder = asyncHandler(async (req, res) => {
   order.orderStatus = "Cancelled";
   await order.save();
 
-  try {
-    const customerEmail = order.user?.email;
-    if (customerEmail) {
-      await sendEmail({
-        to: customerEmail,
-        subject: `Order #${order._id} has been cancelled`,
-        text: `Your order ${order._id} has been cancelled.`,
-        html: `<p>Your order <strong>#${order._id}</strong> has been cancelled.</p>`,
-      });
-    } else {
-      logger.warn(`Order ${order._id} has no customer email to notify`);
-    }
-  } catch (err) {
-    logger.error("Failed to send order cancellation email to customer:", err);
-  }
+  await logAudit({
+    user: req.user?._id,
+    action: "order_cancelled",
+    resource: "order",
+    resourceId: order._id,
+    meta: {},
+    ip: req.ip,
+  });
 
   return res.status(200).json(new ApiResponse(200, order, "Order cancelled successfully"));
 });
@@ -190,7 +176,6 @@ export const getOrderById = asyncHandler(async (req, res) => {
 
 /* ---------------------------------------------------
    🚚 Update Order Status (Admin)
-   - notify customer when status changes
 --------------------------------------------------- */
 export const updateOrderStatus = asyncHandler(async (req, res) => {
   const { id } = req.params;
@@ -198,7 +183,7 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
 
   if (!orderStatus) throw new ApiError(400, "orderStatus is required");
 
-  const allowed = ["Pending", "Preparing", "Out for Delivery", "Delivered", "Cancelled"];
+  const allowed = ["Pending", "Preparing", "Delivered", "Cancelled"];
   if (!allowed.includes(orderStatus)) throw new ApiError(400, "Invalid orderStatus");
 
   const order = await Order.findById(id).populate("user", "email username");
@@ -207,21 +192,14 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
   order.orderStatus = orderStatus;
   await order.save();
 
-  try {
-    const customerEmail = order.user?.email;
-    if (customerEmail) {
-      await sendEmail({
-        to: customerEmail,
-        subject: `Order #${order._id} status updated to ${order.orderStatus}`,
-        text: `Your order ${order._id} status is now: ${order.orderStatus}`,
-        html: `<p>Your order <strong>#${order._id}</strong> status is now: <strong>${order.orderStatus}</strong></p>`,
-      });
-    } else {
-      logger.warn(`Order ${order._id} has no customer email to notify`);
-    }
-  } catch (err) {
-    logger.error("Failed to send order status email to customer:", err);
-  }
+  await logAudit({
+    user: req.user?._id,
+    action: "order_status_updated",
+    resource: "order",
+    resourceId: order._id,
+    meta: { status: orderStatus },
+    ip: req.ip,
+  });
 
   return res.status(200).json(new ApiResponse(200, order, "Order status updated successfully"));
 });
@@ -233,6 +211,15 @@ export const deleteOrder = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const deletedOrder = await Order.findByIdAndDelete(id);
   if (!deletedOrder) throw new ApiError(404, "Order not found");
+
+  await logAudit({
+    user: req.user?._id,
+    action: "order_deleted",
+    resource: "order",
+    resourceId: deletedOrder._id,
+    meta: {},
+    ip: req.ip,
+  });
 
   return res.status(200).json({
     success: true,
@@ -249,36 +236,39 @@ export const redeemPoints = asyncHandler(async (req, res) => {
   const { pointsToRedeem } = req.body;
   const userId = req.user?._id;
 
-  if (!pointsToRedeem || pointsToRedeem <= 0) throw new ApiError(400, "pointsToRedeem is required and must be > 0");
+  if (!pointsToRedeem || !Number.isInteger(Number(pointsToRedeem)) || Number(pointsToRedeem) <= 0)
+    throw new ApiError(400, "pointsToRedeem is required and must be a positive integer");
 
   const order = await Order.findById(id).populate("user", "email username");
   if (!order) throw new ApiError(404, "Order not found");
-  if (order.user._id.toString() !== userId.toString()) throw new ApiError(403, "Not authorized");
+  if (order.user._id.toString() !== userId.toString()) throw new ApiError(403, "Not authorized to redeem points on this order");
 
   const user = await User.findById(userId);
   if (!user) throw new ApiError(404, "User not found");
-  if (user.points < pointsToRedeem) throw new ApiError(400, "Insufficient points");
+  const pts = Number(pointsToRedeem);
+  if ((user.points || 0) < pts) throw new ApiError(400, "Insufficient points");
 
-  // Simple scheme: 1 point = 1 unit currency discount (adjust via env)
-  const POINT_VALUE = Number(process.env.POINT_VALUE) || 1;
-  const discount = pointsToRedeem * POINT_VALUE;
+  // prevent double redemption
+  const alreadyRedeemed = order.meta && order.meta.redeemedPoints;
+  if (alreadyRedeemed) throw new ApiError(400, "Points already redeemed for this order");
 
-  // Apply discount but do not allow negative total
+  const POINT_VALUE = Number(process.env.POINT_VALUE) || 1; // currency value per point
+  const discount = pts * POINT_VALUE;
   const newTotal = Math.max(0, order.totalAmount - discount);
+
   order.totalAmount = newTotal;
-  order.meta = Object.assign({}, order.meta || {}, { redeemedPoints: pointsToRedeem, discountApplied: discount });
+  order.meta = Object.assign({}, order.meta || {}, { redeemedPoints: pts, discountApplied: discount });
   await order.save();
 
-  user.points -= pointsToRedeem;
+  user.points = (user.points || 0) - pts;
   await user.save();
 
-  // Audit log
   await logAudit({
     user: userId,
     action: "redeem_points",
     resource: "order",
     resourceId: order._id,
-    meta: { pointsRedeemed: pointsToRedeem, discount },
+    meta: { pointsRedeemed: pts, discount },
     ip: req.ip,
   });
 

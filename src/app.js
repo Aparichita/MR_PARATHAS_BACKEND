@@ -11,6 +11,8 @@ import menuRoutes from "./routes/menu.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import contactRoutes from "./routes/contact.routes.js";
+import tableRoutes from "./routes/table.routes.js";
+import takeawayRoutes from "./routes/takeaway.routes.js";
 
 // Load environment variables
 dotenv.config();
@@ -46,6 +48,8 @@ app.use("/api/v1/orders", orderRoutes);
 app.use("/api/v1/menu", menuRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/contact", contactRoutes);
+app.use("/api/v1/tables", tableRoutes);
+app.use("/api/v1/takeaway", takeawayRoutes);
 
 /* -------------------- Root Route -------------------- */
 app.get("/", (req, res) => {
